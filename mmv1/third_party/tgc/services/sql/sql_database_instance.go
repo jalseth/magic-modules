@@ -3,7 +3,7 @@
 //	This file is copied here by Magic Modules. The code for building up a
 //	sql database instance object is copied from the manually implemented
 //	provider file:
-//	third_party/terraform/resources/resource_sql_database_instance.go.erb.go
+//	third_party/tgc/services/sql/sql_database_instance.go
 //
 // ----------------------------------------------------------------------------
 package sql
@@ -73,8 +73,8 @@ func GetSQLDatabaseInstanceApiObject(d tpgresource.TerraformResourceData, config
 		Name:                 name,
 		Region:               region,
 		Settings:             expandSqlDatabaseInstanceSettings(d.Get("settings").([]interface{}), !isFirstGen(d)),
-		DatabaseVersion:      d.Get("database_version").(string),
-		MasterInstanceName:   d.Get("master_instance_name").(string),
+		DatabaseVersion:      safeString(d.Get("database_version")),
+		MasterInstanceName:   safeString(d.Get("master_instance_name")),
 		ReplicaConfiguration: expandReplicaConfiguration(d.Get("replica_configuration").([]interface{})),
 	}
 
@@ -85,7 +85,7 @@ func GetSQLDatabaseInstanceApiObject(d tpgresource.TerraformResourceData, config
 func isFirstGen(d tpgresource.TerraformResourceData) bool {
 	settingsList := d.Get("settings").([]interface{})
 	settings := settingsList[0].(map[string]interface{})
-	tier := settings["tier"].(string)
+	tier := safeString(settings["tier"])
 
 	// 1st Generation databases have tiers like 'D0', as opposed to 2nd Generation which are
 	// prefixed with 'db'
@@ -100,14 +100,14 @@ func expandSqlDatabaseInstanceSettings(configured []interface{}, secondGen bool)
 	_settings := configured[0].(map[string]interface{})
 	settings := &sqladmin.Settings{
 		// Version is unset in Create but is set during update
-		SettingsVersion:     int64(_settings["version"].(int)),
-		Tier:                _settings["tier"].(string),
+		SettingsVersion:     int64(safeInt(_settings["version"])),
+		Tier:                safeString(_settings["tier"]),
 		ForceSendFields:     []string{"StorageAutoResize"},
-		ActivationPolicy:    _settings["activation_policy"].(string),
-		AvailabilityType:    _settings["availability_type"].(string),
-		DataDiskSizeGb:      int64(_settings["disk_size"].(int)),
-		DataDiskType:        _settings["disk_type"].(string),
-		PricingPlan:         _settings["pricing_plan"].(string),
+		ActivationPolicy:    safeString(_settings["activation_policy"]),
+		AvailabilityType:    safeString(_settings["availability_type"]),
+		DataDiskSizeGb:      int64(safeInt(_settings["disk_size"])),
+		DataDiskType:        safeString(_settings["disk_type"]),
+		PricingPlan:         safeString(_settings["pricing_plan"]),
 		UserLabels:          tpgresource.ConvertStringMap(_settings["user_labels"].(map[string]interface{})),
 		BackupConfiguration: expandBackupConfiguration(_settings["backup_configuration"].([]interface{})),
 		DatabaseFlags:       expandDatabaseFlags(_settings["database_flags"].(*schema.Set).List()),
@@ -119,9 +119,9 @@ func expandSqlDatabaseInstanceSettings(configured []interface{}, secondGen bool)
 	// 1st Generation instances don't support the disk_autoresize parameter
 	// and it defaults to true - so we shouldn't set it if this is first gen
 	if secondGen {
-		diskAutoresize := _settings["disk_autoresize"].(bool)
+		diskAutoresize := safeBool(_settings["disk_autoresize"])
 		settings.StorageAutoResize = &diskAutoresize
-		settings.StorageAutoResizeLimit = int64(_settings["disk_autoresize_limit"].(int))
+		settings.StorageAutoResizeLimit = int64(safeInt(_settings["disk_autoresize_limit"]))
 	}
 
 	return settings
@@ -134,21 +134,21 @@ func expandReplicaConfiguration(configured []interface{}) *sqladmin.ReplicaConfi
 
 	_replicaConfiguration := configured[0].(map[string]interface{})
 	return &sqladmin.ReplicaConfiguration{
-		FailoverTarget: _replicaConfiguration["failover_target"].(bool),
+		FailoverTarget: safeBool(_replicaConfiguration["failover_target"]),
 
 		// MysqlReplicaConfiguration has been flattened in the TF schema, so
 		// we'll keep it flat here instead of another expand method.
 		MysqlReplicaConfiguration: &sqladmin.MySqlReplicaConfiguration{
-			CaCertificate:           _replicaConfiguration["ca_certificate"].(string),
-			ClientCertificate:       _replicaConfiguration["client_certificate"].(string),
-			ClientKey:               _replicaConfiguration["client_key"].(string),
-			ConnectRetryInterval:    int64(_replicaConfiguration["connect_retry_interval"].(int)),
-			DumpFilePath:            _replicaConfiguration["dump_file_path"].(string),
-			MasterHeartbeatPeriod:   int64(_replicaConfiguration["master_heartbeat_period"].(int)),
-			Password:                _replicaConfiguration["password"].(string),
-			SslCipher:               _replicaConfiguration["ssl_cipher"].(string),
-			Username:                _replicaConfiguration["username"].(string),
-			VerifyServerCertificate: _replicaConfiguration["verify_server_certificate"].(bool),
+			CaCertificate:           safeString(_replicaConfiguration["ca_certificate"]),
+			ClientCertificate:       safeString(_replicaConfiguration["client_certificate"]),
+			ClientKey:               safeString(_replicaConfiguration["client_key"]),
+			ConnectRetryInterval:    int64(safeInt(_replicaConfiguration["connect_retry_interval"])),
+			DumpFilePath:            safeString(_replicaConfiguration["dump_file_path"]),
+			MasterHeartbeatPeriod:   int64(safeInt(_replicaConfiguration["master_heartbeat_period"])),
+			Password:                safeString(_replicaConfiguration["password"]),
+			SslCipher:               safeString(_replicaConfiguration["ssl_cipher"]),
+			Username:                safeString(_replicaConfiguration["username"]),
+			VerifyServerCertificate: safeBool(_replicaConfiguration["verify_server_certificate"]),
 		},
 	}
 }
@@ -160,9 +160,9 @@ func expandMaintenanceWindow(configured []interface{}) *sqladmin.MaintenanceWind
 
 	window := configured[0].(map[string]interface{})
 	return &sqladmin.MaintenanceWindow{
-		Day:             int64(window["day"].(int)),
-		Hour:            int64(window["hour"].(int)),
-		UpdateTrack:     window["update_track"].(string),
+		Day:             int64(safeInt(window["day"])),
+		Hour:            int64(safeInt(window["hour"])),
+		UpdateTrack:     safeString(window["update_track"]),
 		ForceSendFields: []string{"Hour"},
 	}
 }
@@ -174,9 +174,9 @@ func expandLocationPreference(configured []interface{}) *sqladmin.LocationPrefer
 
 	_locationPreference := configured[0].(map[string]interface{})
 	return &sqladmin.LocationPreference{
-		FollowGaeApplication: _locationPreference["follow_gae_application"].(string),
-		Zone:                 _locationPreference["zone"].(string),
-		SecondaryZone:        _locationPreference["secondary_zone"].(string),
+		FollowGaeApplication: safeString(_locationPreference["follow_gae_application"]),
+		Zone:                 safeString(_locationPreference["zone"]),
+		SecondaryZone:        safeString(_locationPreference["secondary_zone"]),
 	}
 }
 
@@ -188,12 +188,12 @@ func expandIpConfiguration(configured []interface{}) *sqladmin.IpConfiguration {
 	_ipConfiguration := configured[0].(map[string]interface{})
 
 	return &sqladmin.IpConfiguration{
-		Ipv4Enabled:        _ipConfiguration["ipv4_enabled"].(bool),
-		PrivateNetwork:     _ipConfiguration["private_network"].(string),
+		Ipv4Enabled:        safeBool(_ipConfiguration["ipv4_enabled"]),
+		PrivateNetwork:     safeString(_ipConfiguration["private_network"]),
 		AuthorizedNetworks: expandAuthorizedNetworks(_ipConfiguration["authorized_networks"].(*schema.Set).List()),
 		ForceSendFields:    []string{"Ipv4Enabled"},
 		NullFields:         []string{"RequireSsl"},
-		SslMode:            _ipConfiguration["ssl_mode"].(string),
+		SslMode:            safeString(_ipConfiguration["ssl_mode"]),
 	}
 }
 func expandAuthorizedNetworks(configured []interface{}) []*sqladmin.AclEntry {
@@ -201,9 +201,9 @@ func expandAuthorizedNetworks(configured []interface{}) []*sqladmin.AclEntry {
 	for _, _acl := range configured {
 		_entry := _acl.(map[string]interface{})
 		an = append(an, &sqladmin.AclEntry{
-			ExpirationTime: _entry["expiration_time"].(string),
-			Name:           _entry["name"].(string),
-			Value:          _entry["value"].(string),
+			ExpirationTime: safeString(_entry["expiration_time"]),
+			Name:           safeString(_entry["name"]),
+			Value:          safeString(_entry["value"]),
 		})
 	}
 
@@ -216,8 +216,8 @@ func expandDatabaseFlags(configured []interface{}) []*sqladmin.DatabaseFlags {
 		_entry := _flag.(map[string]interface{})
 
 		databaseFlags = append(databaseFlags, &sqladmin.DatabaseFlags{
-			Name:  _entry["name"].(string),
-			Value: _entry["value"].(string),
+			Name:  safeString(_entry["name"]),
+			Value: safeString(_entry["value"]),
 		})
 	}
 	return databaseFlags
@@ -230,9 +230,30 @@ func expandBackupConfiguration(configured []interface{}) *sqladmin.BackupConfigu
 
 	_backupConfiguration := configured[0].(map[string]interface{})
 	return &sqladmin.BackupConfiguration{
-		BinaryLogEnabled: _backupConfiguration["binary_log_enabled"].(bool),
-		Enabled:          _backupConfiguration["enabled"].(bool),
-		StartTime:        _backupConfiguration["start_time"].(string),
-		Location:         _backupConfiguration["location"].(string),
+		BinaryLogEnabled: safeBool(_backupConfiguration["binary_log_enabled"]),
+		Enabled:          safeBool(_backupConfiguration["enabled"]),
+		StartTime:        safeString(_backupConfiguration["start_time"]),
+		Location:         safeString(_backupConfiguration["location"]),
 	}
+}
+
+func safeBool(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	return v.(bool)
+}
+
+func safeInt(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+	return v.(int)
+}
+
+func safeString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	return v.(string)
 }
